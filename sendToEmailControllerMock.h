@@ -1,4 +1,4 @@
-#include "typewise-alertUtils.h"
+#include "typewise-alert.h"
 #include "printMessage.h"
 
 void sendToControllerMock(BreachType breachType) {
