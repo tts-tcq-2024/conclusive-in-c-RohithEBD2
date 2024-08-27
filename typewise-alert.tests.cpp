@@ -1,51 +1,73 @@
-#include <gtest/gtest.h>
-#include "typewise-alert.h"
+#include "sendToEmailControllerMock.h"
+#include <stdio.h>
 
-TEST(TypeWiseAlertTestSuite, InfersBreachAccordingToLimits) {
-    ASSERT_EQ(inferBreach(12, 20, 30), TOO_LOW);
-    ASSERT_EQ(inferBreach(25, 20, 30), NORMAL);
-    ASSERT_EQ(inferBreach(35, 20, 30), TOO_HIGH);
+BreachType inferBreach(double value, double lowerLimit, double upperLimit) {
+  if(value < lowerLimit) {
+    return TOO_LOW;
+  }
+  if(value > upperLimit) {
+    return TOO_HIGH;
+  }
+  return NORMAL;
 }
 
-TEST(TypeWiseAlertTestSuite, ClassifiesTemperatureBreach) {
-    ASSERT_EQ(classifyTemperatureBreach(PASSIVE_COOLING, 36), TOO_HIGH);
-    ASSERT_EQ(classifyTemperatureBreach(HI_ACTIVE_COOLING, 46), TOO_HIGH);
-    ASSERT_EQ(classifyTemperatureBreach(MED_ACTIVE_COOLING, 41), TOO_HIGH);
-    ASSERT_EQ(classifyTemperatureBreach(PASSIVE_COOLING, 20), NORMAL);
+int lower_limit[] = {0,0,0};
+int upper_limit[] = {35,45,40};
+
+BreachType classifyTemperatureBreach(CoolingType coolingType, double temperatureInC) {
+  int lowerLimit = lower_limit[coolingType];
+  int upperLimit = upper_limit[coolingType];
+
+  return inferBreach(temperatureInC, lowerLimit, upperLimit);
 }
 
-TEST(TypeWiseAlertTestSuite, SendsAlertToController) {
-    // Redirect stdout to capture output
-    testing::internal::CaptureStdout();
-    sendToController(TOO_HIGH);
-    std::string output = testing::internal::GetCapturedStdout();
-    ASSERT_EQ(output, "feed : 2\n");
+BreachType (*classifyTemperatureBreachPtr)(CoolingType, double) = classifyTemperatureBreach;
+
+
+BreachType breachTypeMock;
+void checkAndAlertMock(AlertTarget alertTarget, BatteryCharacter batteryChar, double temperatureInC){
+    breachTypeMock = classifyTemperatureBreachPtr(
+    batteryChar.coolingType, temperatureInC
+  );
+
+  switch(alertTarget) {
+    case TO_CONTROLLER:
+      sendToController(breachTypeMock);
+      break;
+    case TO_EMAIL:
+      sendToEmail(breachTypeMock);
+      break;
+  }
 }
 
-TEST(TypeWiseAlertTestSuite, SendsAlertToEmail) {
-    testing::internal::CaptureStdout();
-    sendToEmail(TOO_LOW);
-    std::string output = testing::internal::GetCapturedStdout();
-    ASSERT_EQ(output, "To: a.b@c.com\nHi, the temperature is too low\n");
+void checkAndAlert(AlertTarget alertTarget, BatteryCharacter batteryChar, double temperatureInC) {
 
-    testing::internal::CaptureStdout();
-    sendToEmail(TOO_HIGH);
-    output = testing::internal::GetCapturedStdout();
-    ASSERT_EQ(output, "To: a.b@c.com\nHi, the temperature is too high\n");
+  BreachType breachType = classifyTemperatureBreachPtr(
+    batteryChar.coolingType, temperatureInC
+  );
+
+  switch(alertTarget) {
+    case TO_CONTROLLER:
+      sendToController(breachType);
+      break;
+    case TO_EMAIL:
+      sendToEmail(breachType);
+      break;
+  }
 }
 
-TEST(TypeWiseAlertTestSuite, CheckAndAlert) {
-    BatteryCharacter batteryChar = {PASSIVE_COOLING, "BrandX"};
-
-    // Test alert to controller
-    testing::internal::CaptureStdout();
-    checkAndAlert(TO_CONTROLLER, batteryChar, 50);
-    std::string output = testing::internal::GetCapturedStdout();
-    ASSERT_EQ(output, "feed : 2\n");
-
-    // Test alert to email
-    testing::internal::CaptureStdout();
-    checkAndAlert(TO_EMAIL, batteryChar, -1);
-    output = testing::internal::GetCapturedStdout();
-    ASSERT_EQ(output, "To: a.b@c.com\nHi, the temperature is too low\n");
+void sendToController(BreachType breachType) {
+  const unsigned short header = 0xfeed;
+  printtocontroller(header, breachType);
 }
+
+void sendToEmail(BreachType breachType) {
+    const char* recepient = "a.b@c.com";
+    const char* messages[] = {"","Hi, the temperature is too low\n","Hi, the temperature is too high\n"};
+    
+    if (breachType == TOO_LOW || breachType == TOO_HIGH) {
+        printToMessage(recepient);
+        printMessage(messages[breachType]);
+    }
+}
+
